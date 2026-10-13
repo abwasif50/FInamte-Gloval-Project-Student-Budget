@@ -1,6 +1,7 @@
-﻿import test from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createAssistantApp } from './app.js'
+import vercelAssistantApp from '../api/[...path].js'
 
 const categories = { tuition: 1200, rent: 680, food: 280, transport: 65, insurance: 125, other: 170 }
 const requestBody = {
@@ -98,5 +99,13 @@ test('identifies outbound network failures without exposing provider details', a
     assert.equal(payload.code, 'GEMINI_NETWORK_ERROR')
     assert.match(payload.error, /outbound internet access/i)
     assert.deepEqual(logs, [{ name: 'TypeError', status: null, code: 'EACCES' }])
+  })
+})
+
+test('serves health through the Vercel API function entry point', async () => {
+  await withServer(vercelAssistantApp, async base => {
+    const response = await fetch(base + '/api/health')
+    assert.equal(response.status, 200)
+    assert.equal((await response.json()).ok, true)
   })
 })

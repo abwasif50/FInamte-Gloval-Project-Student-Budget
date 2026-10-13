@@ -1,8 +1,8 @@
-﻿# FinMate Global assistant backend
+# FinMate Global assistant backend
 
 ## Setup
 
-Requires Node.js 22.9 or newer. From the project root, copy `server/.env.example` to `server/.env` and set `GEMINI_API_KEY` there. Keep that real file private; it is ignored by Git. `GEMINI_MODEL` defaults to the currently documented stable `gemini-3.8-flash` and can be changed to another model available to your API key.
+Requires Node.js 22.12 or newer. From the project root, copy `server/.env.example` to `server/.env` and set `GEMINI_API_KEY` there. Keep that real file private; it is ignored by Git. `GEMINI_MODEL` defaults to the currently documented stable `gemini-3.8-flash` and can be changed to another model available to your API key.
 
 ## Start locally
 

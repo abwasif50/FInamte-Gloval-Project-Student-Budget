@@ -54,7 +54,7 @@ All sources were opened for this review on 2026-10-12. Source content can change
 
 ## AI and demo mode
 
-The server calculates totals and destination conversions deterministically before asking Gemini for an explanation. The model is instructed not to invent costs, rates, dates, or sources. AI text can still be wrong; check the displayed source links and calculations. If no `GEMINI_API_KEY` is configured, the API returns setup guidance and the browser displays a clearly labelled demo response. A successful live Gemini request has not been verified as part of this project review.
+The server calculates totals and destination conversions deterministically before asking Gemini for an explanation. The model is instructed not to invent costs, rates, dates, or sources. AI text can still be wrong; check the displayed source links and calculations. If no `GEMINI_API_KEY` is configured, the API returns setup guidance and the browser displays a clearly labelled demo response. A live Gemini call was verified locally during troubleshooting. Production must be checked after Vercel deployment.
 
 The configured model is `gemini-3.8-flash`, which Google's current model documentation lists as stable. The backend calls the Google GenAI JavaScript SDK's `models.generateContent` method. Gemini 3 model guidance says not to send the legacy `temperature` sampling parameter; it has been removed from this request configuration.
 
@@ -63,12 +63,12 @@ The configured model is `gemini-3.8-flash`, which Google's current model documen
 - Never place a Gemini key in frontend code, a `VITE_*` variable, or a committed file. Store it in `server/.env`; `.gitignore` excludes `.env` and `.env.*` while allowing the placeholder `server/.env.example`.
 - Expense values and optional funds are stored in browser `localStorage`. When a student submits an assistant question, the current budget, optional available funds, selected destination(s), and exchange-rate snapshot are sent to this backend and then included in the Gemini request. Do not enter names, account numbers, passport details, or other sensitive identifiers.
 - The backend does not persist chats or log questions, budgets, or API keys. Rate limiting is in-memory, per process, and limited to 8 accepted requests per minute per observed client address; it resets on restart and is not a production abuse-control system.
-- The server listens on `127.0.0.1` for local development. In deployment, put it behind a TLS reverse proxy, keep the API key in the host's secret store, and add durable edge rate limits and monitoring without recording request bodies.
+- Locally, Express listens on `127.0.0.1`; on Vercel, the same Express app is exposed as a Node.js Function under `/api`. The frontend calls the same-origin `/api` path, so production needs no localhost URL or CORS configuration.
 - The browser sends its exchange-rate snapshot to the assistant endpoint. The backend validates its shape but does not independently fetch or authenticate that quote; a caller who manually crafts an API request can alter their own submitted snapshot. Do not treat assistant output as a verified financial quote.
 
 ## Requirements and local run
 
-Requires Node.js 22.9 or newer and npm. From the project folder:
+Requires Node.js 22.12 or newer and npm. From the project folder:
 
 1. Copy `server/.env.example` to `server/.env` and enter a Gemini API key there only if live AI is needed. The demo works without a key.
 2. In terminal 1, run `npm.cmd run server`.
@@ -87,6 +87,23 @@ For a production build, run `npm.cmd run build`; it creates `dist/`. See [compet
 
 ## Known issues
 
-- No actual Gemini request, browser UI session, or deployment was performed for this review.
-- The latest `npm.cmd audit` attempt could not reach the npm registry. The last successful audit recorded one moderate and one high finding in the existing Vite/esbuild tree. The project keeps its current dependency versions; see the submission guide for the exact status and remediation decision.
+- The Vercel setup is prepared in this repository, but a public deployment still requires importing the GitHub repository and adding the server-only Gemini environment variable in the Vercel dashboard.
+- `npm.cmd audit` reports zero known vulnerabilities after upgrading Vite and its React plugin. Recheck periodically because new advisories may appear.
 - Sample destination data requires periodic source review. Exchange rates and institutional costs are estimates and can change.
+
+## Deploy to Vercel
+
+This project uses one same-origin Vercel deployment: Vite serves the frontend from the domain root and `api/[...path].js` runs the existing Express API as a Node.js Function. The frontend already calls relative `/api/assistant`, so do not set a `VITE_API_BASE_URL`; no CORS allowlist is needed for this layout. The Vite dev proxy remains for local development only.
+
+In Vercel, import `abwasif50/FInamte-Gloval-Project-Student-Budget` and use these settings:
+
+- Root Directory: `./` (repository root)
+- Framework Preset: Vite
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Install Command: `npm install` (or leave the Vercel default)
+- Node.js version: 22.12 or newer
+
+Add these Project Environment Variables for Production (and Preview if desired): `GEMINI_API_KEY` (required for live AI; enter it only in Vercel) and optionally `GEMINI_MODEL=gemini-3.8-flash`. Do not create a `VITE_GEMINI_API_KEY` or put the secret in any frontend variable. Redeploy after adding variables.
+
+After deployment, `https://<your-vercel-domain>/api/health` should return `ok: true` and `aiConfigured: true`. Submit one assistant question and confirm the panel says AI RESPONSE. The repository has no GitHub Pages build workflow, and its source index loads `/src/main.jsx` directly; Pages does not run Vite to compile JSX. If Pages instead serves a built `dist`, Vite's default `/` asset base also points at the domain root rather than this repository URL's subpath. The deployment prepared here uses Vercel at the domain root; GitHub Pages also cannot run the Express/Gemini backend.

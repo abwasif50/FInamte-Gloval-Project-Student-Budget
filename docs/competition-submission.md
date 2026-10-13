@@ -32,7 +32,7 @@ This checklist is a manual runbook. **It has not been executed in a browser duri
 
 - [ ] With the backend running but no key, submit a prompt; confirm a clearly labelled demo response and key setup guidance appear.
 - [ ] Stop the backend and submit; confirm a demo response and backend-unavailable state appear without breaking budget/navigation.
-- [ ] With a valid `server/.env` key, submit one simple question and confirm the endpoint returns a non-empty response. This is the live integration test; it has not been done in this review.
+- [ ] After deployment, submit one simple question and confirm the endpoint returns a non-empty AI response. A successful local Gemini request was verified during troubleshooting; the production request still needs to be checked.
 - [ ] Confirm invalid or oversized API inputs are rejected, the request limit returns 429 after the configured threshold, and server errors never echo the API key.
 - [ ] Verify assistant questions do not send conversation history; inspect one request and confirm it contains only the current question and required finance context.
 
@@ -62,83 +62,32 @@ Use the running local app. Do not describe the demo response as AI. If a live ke
 
 Do not add unverified user counts, impact metrics, partnerships, customer quotes, or claims of completed browser/live-model testing.
 
-## Deployment recommendation (not performed)
+## Vercel deployment (prepared, not yet published)
 
-For a controlled competition demo, use one low-cost Linux VM with a domain, Caddy for HTTPS/static frontend delivery, and the Node backend bound to loopback. This keeps `/api/assistant` same-origin, matches the current frontend's relative fetch path, and avoids adding CORS configuration. A free-tier split frontend/backend can work but requires a configurable API origin, CORS policy, and provider availability checks; that is not currently configured.
+The repository has no GitHub Pages build workflow, and its source `index.html` loads `/src/main.jsx` directly; Pages does not run Vite to compile JSX. If Pages is instead serving a built `dist`, Vite's default `/` asset base also points at the domain root rather than this repository URL's subpath. This is the source evidence for the blank page; the GitHub Pages build setting itself could not be inspected here. GitHub Pages also serves static files only and cannot run the Express/Gemini backend. This project instead targets Vercel at the domain root, where `base: '/'` is correct.
 
-### Exact single-VM deployment sequence
+The deployment uses Vercel's Vite static output plus a Node.js Function at `api/[...path].js` that exports the existing Express app. Requests stay same-origin at `/api/health` and `/api/assistant`; the frontend does not contain a localhost URL. Because the frontend and API share an origin, CORS configuration is not needed. The local Vite proxy continues to forward `/api` to port 3030.
 
-1. Provision an Ubuntu LTS VM, DNS name, and firewall rules for SSH plus HTTP/HTTPS. Do not expose port 3030 publicly.
-2. Install Node.js 22 LTS, npm, and Caddy using their official installation instructions. Configure SSH keys and routine OS security updates.
-3. Copy the project to the VM through a private Git repository or secure file transfer. Do not copy a developer `.env` file.
-4. In the project directory run `npm ci`, then `npm run build`.
-5. Create `server/.env` on the VM with `GEMINI_API_KEY`, optional `GEMINI_MODEL=gemini-3.8-flash`, and `PORT=3030`; restrict it to the service user (for example `chmod 600 server/.env`). Never put the key in `dist/`, a Vite variable, source control, screenshots, or presentation material.
-6. Run `npm test` and `npm run check:rates` on the VM before opening the demo.
-7. Configure a systemd service with project directory as `WorkingDirectory`, command `/usr/bin/node server/index.js`, a dedicated unprivileged user, and restart-on-failure. The service loads `server/.env` itself and listens on `127.0.0.1:3030`.
-8. Configure Caddy for the chosen domain: serve the project's `dist/` directory as static files, reverse proxy `/api/*` to `127.0.0.1:3030`, and enable SPA fallback to `index.html`. Caddy provisions TLS for a valid DNS name.
-9. Confirm HTTPS page load, `/api/health`, no-key behavior, then a controlled Gemini request after adding the secret. Inspect browser/network logs and server logs for accidental request-body or secret output.
-10. Set provider usage limits/alerts where available, add edge request throttling, monitor service health without logging prompt/budget bodies, and rehearse the demo. Do not rely on the app's per-process limiter as the only production control.
+### Vercel dashboard settings
 
-Exact package install commands, host policies, and firewall setup vary by provider; use the chosen OS/provider's current official docs. No host, account, service, domain, or deployment was created for this project.
+1. Import the existing GitHub repository `abwasif50/FInamte-Gloval-Project-Student-Budget`.
+2. Set Root Directory to the repository root (`./`) and Framework Preset to Vite.
+3. Use Install Command `npm install`, Build Command `npm run build`, and Output Directory `dist`. These are also recorded in `vercel.json`.
+4. Choose Node.js 22.12 or later.
+5. Under Project Settings → Environment Variables, add `GEMINI_API_KEY` as a server-side Production secret. Optionally add `GEMINI_MODEL` with value `gemini-3.8-flash` (the backend default). Do not add a Vite-prefixed key or `PORT`. Redeploy after saving.
+6. Check `https://<your-vercel-domain>/api/health`; expected JSON has `ok: true` and `aiConfigured: true`. Submit one question and verify an AI response. A public deployment has not been created or verified yet; the owner must authorize the repository import and add the secret in Vercel.
 
-### Example service and Caddy configuration
+### Security and deployment checks
 
-Replace the example domain and directory with the real VM values. Keep `server/.env` readable only by the service account.
+- `server/.env` is ignored by Git; `server/.env.example` contains a blank key field only. The key is read by the function from Vercel's server environment and is not bundled into Vite assets.
+- Health status only confirms that a key value is configured. A real assistant request is required to validate key access and quota. Provider/network errors are categorized and logged with only a sanitized name, status, and code.
+- The in-memory rate limit is per function instance and is not a durable public abuse-control system. Monitor Gemini quota and set provider usage limits where available.
+- No custom client-side router is used, so no SPA rewrite is required.
 
-`/etc/systemd/system/finmate.service`:
+### Local verification (2026-10-13)
 
-```ini
-[Unit]
-Description=FinMate Global API
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=finmate
-Group=finmate
-WorkingDirectory=/srv/finmate/current
-Environment=NODE_ENV=production
-ExecStart=/usr/bin/node /srv/finmate/current/server/index.js
-Restart=on-failure
-RestartSec=3
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-
-[Install]
-WantedBy=multi-user.target
-```
-
-`/etc/caddy/Caddyfile`:
-
-```caddy
-finmate.example.com {
-	encode zstd gzip
-	handle /api/* {
-		reverse_proxy 127.0.0.1:3030
-	}
-	handle {
-		root * /srv/finmate/current/dist
-		try_files {path} /index.html
-		file_server
-	}
-}
-```
-
-After installing both files, run `sudo systemctl daemon-reload`, `sudo systemctl enable --now finmate`, and `sudo systemctl reload caddy`. Confirm service status with `sudo systemctl status finmate` and `sudo journalctl -u finmate` (without logging request bodies). Set ownership so the `finmate` service user can read the app and `server/.env`; it does not need write access to the project directory.
-
-## Review checks and issues
-
-Checks run for this review:
-
-- `npm.cmd run build` — passed.
-- `npm.cmd test` — 8 tests passed, 0 failed.
-- `npm.cmd run check:rates` — passed supported/unsupported quote/base, API error, and both conversion direction cases using mocked API responses.
-
-These are automated checks, not a browser acceptance run or live Frankfurter connectivity test. The rate checker uses mocked API payloads.
-
-The current install is Vite 5.4.21 with esbuild in its development dependency tree. The last successful npm audit reported one moderate and one high vulnerability, with fixes requiring a Vite major upgrade. The audit command during this review could not reach the npm registry, so its advisory list could not be refreshed. No dependency upgrade was made. Re-run `npm.cmd audit` from a network-enabled terminal and plan a tested Vite/plugin upgrade separately; avoid `npm audit fix --force` for the submission build.
-
-Google's current documentation lists `gemini-3.8-flash` as stable. The code path was reviewed, but no API key was configured, so a live Gemini request has not succeeded or been tested.
+- `npm.cmd test` — 11 tests passed, including the Vercel API entry-point health test.
+- `npm.cmd run build` — passed with Vite 8.3.4.
+- `npm.cmd run check:rates` — passed.
+- `npm.cmd audit` — 0 known vulnerabilities.
+- The API entry point was exercised through Express in the automated test suite. A Vercel preview/public deployment and browser-based desktop/mobile acceptance checks have not been run because the owner must authorize the Vercel project import first.
